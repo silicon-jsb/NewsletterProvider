@@ -3,6 +3,7 @@ using Data.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
@@ -13,36 +14,41 @@ namespace NewsletterProvider.Functions
         private readonly ILogger<Subscribe> _logger = logger;
         private readonly DataContext _context = context;
 
-        //    [Function("Subscribe")]
-        //    public async IActionResult Run([HttpTrigger(AuthorizationLevel.Function, "get", "post")] HttpRequest req)
-        //    {
-        //        try
-        //        {
-        //            var body = await new StreamReader(req.Body).ReadToEndAsync();
-        //            if (!string.IsNullOrEmpty(body))
-        //            {
-        //                var e
-        //                var SubscribeEntity = JsonConvert.DeserializeObject<SubscribeEntity>(body);
-        //                if (SubscribeEntity != null)
-        //                {
-        //                    _context.SubscribeEntities.Add(SubscribeEntity);
-        //                    await _context.SaveChangesAsync();
-        //                    return new OkResult();
-        //                }
-        //                else
-        //                {
-        //                    _logger.LogError($"Invalid request body");
-        //                    return new BadRequestResult();
+        [Function("Subscribe")]
+        public async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequest req)
+        {
+            try
+            {
+                var body = await new StreamReader(req.Body).ReadToEndAsync();
+                if (!string.IsNullOrEmpty(body))
+                {
+                    var subscribeEntity = JsonConvert.DeserializeObject<SubscribeEntity>(body);
+                    if (subscribeEntity != null)
+                    {
+                        var existingSubscriber = await _context.SubscribeEntities.FirstOrDefaultAsync(s => s.Email == subscribeEntity.Email);
 
-        //                }
+                        if (existingSubscriber != null)
+                        {
+                            _context.Entry(existingSubscriber).CurrentValues.SetValues(subscribeEntity);
+                            await _context.SaveChangesAsync();
+                            return new OkObjectResult(new { Status = 200, Message = "Subscriber was updated."});
+                        }
 
-        //            }
-        //        }
-        //        catch (Exception ex)
-        //        {
-        //            _logger.LogError($"Subscribe.Run() :: {ex.Message}");
-        //        }
-        //        return null!;
-        //    }
+                        _context.SubscribeEntities.Add(subscribeEntity);
+                        await _context.SaveChangesAsync();
+                        return new OkObjectResult(new { Status = 200, Message = "Subscriber was added." });
+                    }
+                    else
+                    {
+                        return new BadRequestObjectResult(new { Status = 400, Message = "Unable to subscribe right now."});
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Subscribe.Run() :: {ex.Message}");
+            }
+            return null!;
+        }
     }
 }
